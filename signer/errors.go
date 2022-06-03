@@ -1,4 +1,4 @@
-package signature
+package signer
 
 import "fmt"
 
@@ -18,9 +18,16 @@ func (e *MalformedSignatureError) Error() string {
 
 // UnsupportedSignatureFormatError is used when signature envelope is not supported.
 type UnsupportedSignatureFormatError struct {
-	sigFormat string
+	mediaType string
 }
 
 func (e *UnsupportedSignatureFormatError) Error() string {
-	return fmt.Sprintf("The signature envelope format '%s' is not supported.", e.sigFormat)
+	return fmt.Sprintf("The signature envelope format with media type '%s' is not supported.", e.mediaType)
+}
+
+// UnsupportedSignatureFormatError is used when signature envelope is not supported.
+type SignatureNotFoundError struct{}
+
+func (e *SignatureNotFoundError) Error() string {
+	return ("Signature not present. Please sign before verify.")
 }
