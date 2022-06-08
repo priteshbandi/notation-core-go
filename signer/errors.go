@@ -25,9 +25,16 @@ func (e *UnsupportedSignatureFormatError) Error() string {
 	return fmt.Sprintf("The signature envelope format with media type '%s' is not supported.", e.mediaType)
 }
 
-// UnsupportedSignatureFormatError is used when signature envelope is not supported.
+// SignatureNotFoundError is used when envelope is unsigned.
 type SignatureNotFoundError struct{}
 
 func (e *SignatureNotFoundError) Error() string {
+	return ("Signature not present. Please sign before verify.")
+}
+
+// SignatureNotTrustedError is used when envelope is unsigned.
+type SignatureNotTrustedError struct{}
+
+func (e *SignatureNotTrustedError) Error() string {
 	return ("Signature not present. Please sign before verify.")
 }

@@ -2,6 +2,7 @@ package signer
 
 import (
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -27,9 +28,21 @@ type SignerInfo struct {
 	SignedAttributes   SignedAttributes
 	UnsignedAttributes UnsignedAttributes
 	SignatureAlgorithm SignatureAlgorithm
-	CertificateChain   x509.CertPool
+	CertificateChain   []x509.Certificate
 	Signature          []byte
 	TimestampSignature []byte
+}
+
+// SignedAttributes represents signed metadata in the signature envelope
+type SignedAttributes struct {
+	SigningTime        time.Time // library will take care critical/presence
+	Expiry             time.Time // library will take care critical/presence
+	ExtendedAttributes []Attributes
+}
+
+// UnsignedAttributes represents unsigned metadata in the signature envelope
+type UnsignedAttributes struct {
+	SigningAgent string
 }
 
 // SignRequest is used to generate signature.
@@ -42,18 +55,6 @@ type SignRequest struct {
 	SigningTime        time.Time // library will take care critical/presence
 	Expiry             time.Time // library will take care critical/presence
 	SigningAgent       string
-}
-
-// SignedAttributes represents signed metadata in the signature envelope
-type SignedAttributes struct {
-	SigningTime              time.Time // library will take care critical/presence
-	Expiry                   time.Time // library will take care critical/presence
-	ExtendedSignedAttributes []Attributes
-}
-
-// UnsignedAttributes represents unsigned metadata in the signature envelope
-type UnsignedAttributes struct {
-	SigningAgent string
 }
 
 type Attributes struct {
@@ -83,19 +84,19 @@ type internalSignatureEnvelope interface {
 }
 
 // Verify method performs integrety validation and validates that cert-chain stored in signature leads to given set of trusted root.
-func (s SignatureEnvelope) Verify(certs x509.CertPool) error {
+func (s SignatureEnvelope) Verify(certs []x509.Certificate) (x509.Certificate, error) {
 	if len(s.rawSignatureEnvelope) == 0 {
-		return &SignatureNotFoundError{}
+		return x509.Certificate{}, &SignatureNotFoundError{}
 	}
 
 	integrityError := s.internalEnvelope.validateIntegrity()
 	if integrityError != nil {
-		return integrityError
+		return x509.Certificate{}, integrityError
 	}
 
 	singerInfo, singerInfoErr := s.internalEnvelope.getSignerInfo()
 	if singerInfoErr != nil {
-		return integrityError
+		return x509.Certificate{}, integrityError
 	}
 
 	certChain := singerInfo.CertificateChain
@@ -104,7 +105,7 @@ func (s SignatureEnvelope) Verify(certs x509.CertPool) error {
 
 	//TODO Implement truststore validation
 	fmt.Println("Yet to implement truststore validation")
-	return nil
+	return verifySigner(certChain, certs)
 }
 
 // Sign generates signature using given SignRequest.
@@ -121,9 +122,13 @@ func (s SignatureEnvelope) GetSignerInfo() (SignerInfo, error) {
 func NewSignatureEnvelopeFromBytes(envelopeBytes []byte, envelopeMediaType SignatureMediaType) (SignatureEnvelope, error) {
 	switch envelopeMediaType {
 	case JWS_JSON_MEDIA_TYPE:
+		internal, err := newJWSEnvelopeFromBytes(envelopeBytes)
+		if err != nil {
+			return SignatureEnvelope{}, nil
+		}
 		return SignatureEnvelope{
 			rawSignatureEnvelope: envelopeBytes,
-			internalEnvelope:     newJWSEnvelopeFromBytes(envelopeBytes),
+			internalEnvelope:     internal,
 		}, nil
 	default:
 		return SignatureEnvelope{}, &UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
@@ -138,4 +143,17 @@ func NewSignatureEnvelope(envelopeMediaType SignatureMediaType) (SignatureEnvelo
 	default:
 		return SignatureEnvelope{}, &UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
 	}
+}
+
+func verifySigner(sigCerts []x509.Certificate, trustedCerts []x509.Certificate) (x509.Certificate, error) {
+	// TODO: Validate cert chain (sigCert).
+
+	for _, trust := range trustedCerts {
+		for _, sig := range sigCerts {
+			if trust.Equal(&sig) {
+				return trust, nil
+			}
+		}
+	}
+	return x509.Certificate{}, errors.New("hoka")
 }
