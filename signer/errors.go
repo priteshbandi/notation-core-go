@@ -10,10 +10,16 @@ func (e *InvalidSignatureError) Error() string {
 }
 
 // MalformedSignatureError is used when signature envelope is malformed.
-type MalformedSignatureError struct{}
+type MalformedSignatureError struct {
+	msg string
+}
 
 func (e *MalformedSignatureError) Error() string {
-	return "The signature envelope format is malformed."
+	if len(e.msg) != 0 {
+		return e.msg
+	} else {
+		return "The signature envelope format is malformed"
+	}
 }
 
 // UnsupportedSignatureFormatError is used when signature envelope is not supported.
@@ -36,5 +42,12 @@ func (e *SignatureNotFoundError) Error() string {
 type SignatureNotTrustedError struct{}
 
 func (e *SignatureNotTrustedError) Error() string {
+	return ("Signature not present. Please sign before verify.")
+}
+
+// SignatureNotTrustedError is used when envelope is unsigned.
+type UnsupportedOperationError struct{}
+
+func (e *UnsupportedOperationError) Error() string {
 	return ("Signature not present. Please sign before verify.")
 }

@@ -27,7 +27,6 @@ type JWS struct {
 func newJWSEnvelopeFromBytes(envelopeBytes []byte) (JWS, error) {
 	jwsInternal, err := NewJwsInternalEnvelope(envelopeBytes)
 	if err != nil {
-		fmt.Println("Inside newJWSEnvelopeFromBytes")
 		return JWS{}, err
 	}
 
@@ -42,65 +41,76 @@ func newJWSEnvelope() JWS {
 
 func (jws JWS) validateIntegrity() error {
 	fmt.Println("Inside validateIntegrity")
-	sigInfo, _ := jws.getSignerInfo()
+	sigInfo, err := jws.getSignerInfo()
+	if err != nil {
+		return err
+	}
+
+	if valError := validate(sigInfo); valError != nil {
+		return valError
+	}
+
 	leafPublicKey := sigInfo.CertificateChain[0].PublicKey
 
 	// verify JWT
-	compact := strings.Join([]string{jws.internalEnv.Protected, jws.internalEnv.Payload, jws.internalEnv.Signature}, ".")
-	verifyJWT(compact, leafPublicKey)
-	return nil
+	compact := strings.Join([]string{jws.internalEnv.protected, jws.internalEnv.payload, jws.internalEnv.signature}, ".")
+	return verifyJWT(compact, leafPublicKey)
 }
 
 func (jws JWS) getSignerInfo() (SignerInfo, error) {
-	fmt.Println("Inside getSignerInfo")
 	signInfo := SignerInfo{}
-	payload, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.Payload)
-	if err != nil {
+	if payload, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.payload); err != nil {
 		return signInfo, err
+	} else {
+		signInfo.Payload = payload
 	}
-	signInfo.Payload = payload
 
-	protected, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.Protected)
+	protected, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.protected)
 	if err != nil {
 		return signInfo, err
 	}
+
 	var pHeaders map[string]interface{}
-	err = json.Unmarshal(protected, &pHeaders)
-	if err != nil {
+	if err = json.Unmarshal(protected, &pHeaders); err != nil {
 		return signInfo, err
 	}
-
 	populateProtectedHeaders(pHeaders, &signInfo)
 
 	// unsigned attrs
-	sig, error := base64.RawURLEncoding.DecodeString(jws.internalEnv.Signature)
-	if error != nil {
+	if sig, error := base64.RawURLEncoding.DecodeString(jws.internalEnv.signature); err != nil {
 		return signInfo, error
+	} else {
+		signInfo.Signature = sig
 	}
-	signInfo.Signature = sig
 
-	certs := make([]x509.Certificate, 0, len(jws.internalEnv.Header.CertChain))
-	for _, certBytes := range jws.internalEnv.Header.CertChain {
-		cert, err := x509.ParseCertificate(certBytes)
-		if err != nil {
+	certs := make([]x509.Certificate, 0, len(jws.internalEnv.header.certChain))
+	for _, certBytes := range jws.internalEnv.header.certChain {
+		if cert, err := x509.ParseCertificate(certBytes); err != nil {
 			return signInfo, err
+		} else {
+			certs = append(certs, *cert)
 		}
-		certs = append(certs, *cert)
 	}
 	signInfo.CertificateChain = certs
 
-	signInfo.UnsignedAttributes.SigningAgent = jws.internalEnv.Header.SigningAgent
+	signInfo.UnsignedAttributes.SigningAgent = jws.internalEnv.header.signingAgent
 
-	signInfo.TimestampSignature = jws.internalEnv.Header.TimestampSignature
+	signInfo.TimestampSignature = jws.internalEnv.header.timestampSignature
 
 	return signInfo, nil
 }
 
-func populateProtectedHeaders(pHeaders map[string]interface{}, signInfo *SignerInfo) {
+func populateProtectedHeaders(pHeaders map[string]interface{}, signInfo *SignerInfo) error {
 	populateString(pHeaders, "cty", &signInfo.PayloadContentType)
-	populateTime(pHeaders, "io.cncf.notary.signingTime", &signInfo.SignedAttributes.SigningTime)
-	populateTime(pHeaders, "io.cncf.notary.expiry", &signInfo.SignedAttributes.Expiry)
+	if err := populateTime(pHeaders, "io.cncf.notary.signingTime", &signInfo.SignedAttributes.SigningTime); err != nil {
+		return err
+	}
+	if err := populateTime(pHeaders, "io.cncf.notary.expiry", &signInfo.SignedAttributes.Expiry); err != nil {
+		return err
+	}
 	populateExtendedAttributes(pHeaders, &signInfo.SignedAttributes.ExtendedAttributes)
+
+	return nil
 }
 
 func populateString(data map[string]interface{}, s string, holder *string) {
@@ -110,22 +120,22 @@ func populateString(data map[string]interface{}, s string, holder *string) {
 	}
 }
 
-func populateTime(data map[string]interface{}, s string, holder *time.Time) {
+func populateTime(data map[string]interface{}, s string, holder *time.Time) error {
 	if val, ok := data[s]; ok {
-		value, err := time.Parse(time.RFC3339, val.(string))
-		if err != nil {
-			fmt.Println("face")
+		if value, err := time.Parse(time.RFC3339, val.(string)); err != nil {
+			return &MalformedSignatureError{msg: "Failed to parse time, it's not in RFC3339 format"}
+		} else {
+			*holder = value
+			delete(data, s)
 		}
-		*holder = value
-		delete(data, s)
 	}
+	return nil
 }
 
 func populateExtendedAttributes(data map[string]interface{}, holder *[]Attributes) {
 	extendedAttr := make([]Attributes, len(data))
 	if val, ok := data["crit"]; ok {
 		delete(data, "crit")
-		fmt.Println(val)
 		s := reflect.ValueOf(val)
 		for i := 0; i < s.Len(); i++ {
 			var val string = s.Index(i).Interface().(string)
@@ -139,16 +149,36 @@ func populateExtendedAttributes(data map[string]interface{}, holder *[]Attribute
 	}
 
 	*holder = extendedAttr
-
 }
 
 func (jws JWS) signPayload(req SignRequest) ([]byte, error) {
-	fmt.Println("Inside signPayload")
-	// construct jws local representation
-	// call byteSigner
-	// stuff the signature inside local represntation
-	// return bytes.
-	return []byte{}, nil
+	leafPublicKey := req.CertificateChain[0].PublicKey
+	m := make(map[string]interface{})
+	if err := json.Unmarshal(req.Payload, &m); err != nil {
+
+	}
+	signedAttrs := getSignedAttrs(req)
+	compact, _ := signJWT(m, signedAttrs, leafPublicKey, req.SignatureProvider)
+
+	return generateJws(compact, req)
+}
+
+func getSignedAttrs(req SignRequest) map[string]interface{} {
+	attrs := make(map[string]interface{})
+	attrs["io.cncf.notary.signingTime"] = req.SigningTime.String()
+	if !req.Expiry.IsZero() {
+		attrs["io.cncf.notary.expiry"] = req.Expiry.String()
+	}
+	attrs["cty"] = req.PayloadContentType
+	// req.SignatureAlgorithm
+	crit := make([]string, len(req.ExtendedSignedAttrs))
+	for _, elm := range req.ExtendedSignedAttrs {
+		attrs[elm.Key] = elm.Value
+		if elm.Critical {
+			crit = append(crit, elm.Key)
+		}
+	}
+	return nil
 }
 
 // ***********************************************************************
@@ -162,27 +192,27 @@ const (
 // JWSEnvelope is the final signature envelope.
 type jwsInternalEnvelope struct {
 	// JWSPayload Base64URL-encoded.
-	Payload string `json:"payload"`
+	payload string `json:"payload"`
 
 	// jwsProtectedHeader Base64URL-encoded.
-	Protected string `json:"protected"`
+	protected string `json:"protected"`
 
 	// Signature metadata that is not integrity protected
-	Header JWSUnprotectedHeader `json:"header"`
+	header jwsUnprotectedHeader `json:"header"`
 
 	// Base64URL-encoded signature.
-	Signature string `json:"signature"`
+	signature string `json:"signature"`
 }
 
-type JWSUnprotectedHeader struct {
+type jwsUnprotectedHeader struct {
 	// RFC3161 time stamp token Base64-encoded.
-	TimestampSignature []byte `json:"io.cncf.notary.timestampSignature,omitempty"`
+	timestampSignature []byte `json:"io.cncf.notary.timestampSignature,omitempty"`
 
 	// List of X.509 Base64-DER-encoded certificates
 	// as defined at https://datatracker.ietf.org/doc/html/rfc7515#section-4.1.6.
-	CertChain [][]byte `json:"x5c"`
+	certChain [][]byte `json:"x5c"`
 
-	SigningAgent string `json:"io.cncf.notary.signingAgent"`
+	signingAgent string `json:"io.cncf.notary.signingAgent"`
 }
 
 func NewJwsInternalEnvelope(b []byte) (jwsInternalEnvelope, error) {
@@ -196,6 +226,46 @@ func NewJwsInternalEnvelope(b []byte) (jwsInternalEnvelope, error) {
 // ***********************************************************************
 // JWT specifc implementation
 // ***********************************************************************
+func signJWT(payload map[string]interface{}, headers map[string]interface{}, key crypto.PublicKey, sigPro SignatureProvider) (string, error) {
+	signingMethod, _ := signingMethodFromKey(key)
+	var claims jwt.MapClaims = payload
+	token := &jwt.Token{
+		Header: headers,
+		Claims: claims,
+	}
+
+	token.Method = SigningMethodForSign{algo: signingMethod.Alg(), sigProvider: sigPro}
+	compact, err := token.SignedString("DummyNotUsed")
+	if err != nil {
+		return "", err
+	}
+	return compact, nil
+}
+
+func generateJws(compact string, req SignRequest) ([]byte, error) {
+	parts := strings.Split(compact, ".")
+	if len(parts) != 3 {
+		return nil, errors.New("invalid compact serialization")
+	}
+
+	rawCerts := make([][]byte, len(req.CertificateChain))
+	for i, cert := range req.CertificateChain {
+		rawCerts[i] = cert.Raw
+	}
+
+	j := jwsInternalEnvelope{
+		protected: parts[0],
+		payload:   parts[1],
+		signature: parts[2],
+		header: jwsUnprotectedHeader{
+			certChain:    rawCerts,
+			signingAgent: req.SigningAgent,
+		},
+	}
+
+	return json.Marshal(j)
+}
+
 // verifyJWT verifies the JWT token against the specified verification key, and
 // returns notation claim.
 func verifyJWT(tokenString string, key crypto.PublicKey) error {
@@ -256,3 +326,32 @@ func signingMethodFromKey(key interface{}) (jwt.SigningMethod, error) {
 	}
 	return nil, errors.New("key not recognized")
 }
+
+// SigningMethodForSign can only be used for signing tokens.
+type SigningMethodForSign struct {
+	algo        string
+	sigProvider SignatureProvider
+}
+
+func (s SigningMethodForSign) Verify(signingString, signature string, key interface{}) error {
+	return &UnsupportedOperationError{}
+}
+
+func (s SigningMethodForSign) Sign(signingString string, key interface{}) (string, error) {
+	if seg, err := s.sigProvider.sign([]byte(signingString)); err == nil {
+		return base64.RawURLEncoding.EncodeToString(seg), nil
+	} else {
+		return "", err
+	}
+
+}
+
+func (s SigningMethodForSign) Alg() string {
+	return s.algo
+}
+
+type Claims interface {
+	Valid() error
+}
+
+type CustomClaims struct{}

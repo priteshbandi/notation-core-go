@@ -47,14 +47,15 @@ type UnsignedAttributes struct {
 
 // SignRequest is used to generate signature.
 type SignRequest struct {
-	Payload            []byte
-	PayloadContentType string
-	CertificateChain   x509.CertPool
-	SignatureAlgorithm SignatureAlgorithm
-	SignatureProvider  SignatureProvider
-	SigningTime        time.Time // library will take care critical/presence
-	Expiry             time.Time // library will take care critical/presence
-	SigningAgent       string
+	Payload             []byte
+	PayloadContentType  string
+	CertificateChain    []x509.Certificate
+	SignatureAlgorithm  SignatureAlgorithm
+	SignatureProvider   SignatureProvider
+	SigningTime         time.Time // library will take care critical/presence
+	Expiry              time.Time // library will take care critical/presence
+	ExtendedSignedAttrs []Attributes
+	SigningAgent        string
 }
 
 type Attributes struct {
@@ -116,6 +117,38 @@ func (s SignatureEnvelope) Sign(req SignRequest) ([]byte, error) {
 // Returns information about the signature envelope
 func (s SignatureEnvelope) GetSignerInfo() (SignerInfo, error) {
 	return s.internalEnvelope.getSignerInfo()
+}
+
+func validate(info SignerInfo) error {
+	if len(info.Payload) == 0 {
+		return &MalformedSignatureError{msg: "Payload not present"}
+	}
+
+	if len(info.CertificateChain) == 0 {
+		return &MalformedSignatureError{msg: "Certificate chain not present or is empty"}
+	}
+
+	if len(info.Signature) == 0 {
+		return &MalformedSignatureError{msg: "Signature not present or is empty"}
+	}
+
+	signTime := info.SignedAttributes.SigningTime
+	if signTime.IsZero() {
+		return &MalformedSignatureError{msg: "Singing time not present"}
+	}
+
+	expTime := info.SignedAttributes.Expiry
+	if !expTime.IsZero() {
+		if expTime.Before(signTime) || expTime.Equal(signTime) {
+			return &MalformedSignatureError{msg: "Expity time cannot be equal or before the signing time"}
+		}
+	}
+
+	if len(info.PayloadContentType) == 0 {
+		return &MalformedSignatureError{msg: "Signature content type not present or is empty"}
+	}
+
+	return nil
 }
 
 // For verify flow
