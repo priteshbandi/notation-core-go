@@ -9,7 +9,7 @@ import (
 
 type SignatureMediaType string
 
-// List of supported signature algorithms.
+// SignatureAlgorithm lists supported Signature algorithms.
 type SignatureAlgorithm string
 
 const (
@@ -21,7 +21,7 @@ const (
 	ECDSA_SHA_512      SignatureAlgorithm = "ECDSA_SHA_512"
 )
 
-// SignerInfo reprents an parsed signature envelope and agnostic to signature envelope format.
+// SignerInfo represents a parsed Signature envelope and agnostic to Signature envelope format.
 type SignerInfo struct {
 	Payload            []byte
 	PayloadContentType string
@@ -33,24 +33,23 @@ type SignerInfo struct {
 	TimestampSignature []byte
 }
 
-// SignedAttributes represents signed metadata in the signature envelope
+// SignedAttributes represents signed metadata in the Signature envelope
 type SignedAttributes struct {
 	SigningTime        time.Time // library will take care critical/presence
 	Expiry             time.Time // library will take care critical/presence
 	ExtendedAttributes []Attributes
 }
 
-// UnsignedAttributes represents unsigned metadata in the signature envelope
+// UnsignedAttributes represents unsigned metadata in the Signature envelope
 type UnsignedAttributes struct {
 	SigningAgent string
 }
 
-// SignRequest is used to generate signature.
+// SignRequest is used to generate Signature.
 type SignRequest struct {
 	Payload             []byte
 	PayloadContentType  string
 	CertificateChain    []x509.Certificate
-	SignatureAlgorithm  SignatureAlgorithm
 	SignatureProvider   SignatureProvider
 	SigningTime         time.Time // library will take care critical/presence
 	Expiry              time.Time // library will take care critical/presence
@@ -64,9 +63,9 @@ type Attributes struct {
 	Value    interface{}
 }
 
-// SignatureProvider is used to sign bytes generated after creating signature envelope.
+// SignatureProvider is used to sign bytes generated after creating Signature envelope.
 type SignatureProvider interface {
-	sign([]byte) ([]byte, error)
+	Sign([]byte) ([]byte, error)
 }
 
 type SignatureEnvelope struct {
@@ -74,17 +73,17 @@ type SignatureEnvelope struct {
 	internalEnvelope     internalSignatureEnvelope
 }
 
-// Contians set of common methods that every signature envelope format must implement.
+// Contains set of common methods that every Signature envelope format must implement.
 type internalSignatureEnvelope interface {
-	// validateIntegrity validates the integrity of given signature envelope.
+	// validateIntegrity validates the integrity of given Signature envelope.
 	validateIntegrity() error
-	// getSignerInfo returns the information stored in the signature envelope and doesnt performs integrity verification.
+	// getSignerInfo returns the information stored in the Signature envelope and doesn't perform integrity verification.
 	getSignerInfo() (SignerInfo, error)
-	// signPayload created signature envelope.
+	// signPayload created Signature envelope.
 	signPayload(SignRequest) ([]byte, error)
 }
 
-// Verify method performs integrety validation and validates that cert-chain stored in signature leads to given set of trusted root.
+// Verify performs integrity validation and validates that cert-chain stored in Signature leads to given set of trusted root.
 func (s SignatureEnvelope) Verify(certs []x509.Certificate) (x509.Certificate, error) {
 	if len(s.rawSignatureEnvelope) == 0 {
 		return x509.Certificate{}, &SignatureNotFoundError{}
@@ -109,12 +108,12 @@ func (s SignatureEnvelope) Verify(certs []x509.Certificate) (x509.Certificate, e
 	return verifySigner(certChain, certs)
 }
 
-// Sign generates signature using given SignRequest.
+// Sign generates Signature using given SignRequest.
 func (s SignatureEnvelope) Sign(req SignRequest) ([]byte, error) {
 	return s.internalEnvelope.signPayload(req)
 }
 
-// Returns information about the signature envelope
+// GetSignerInfo returns information about the Signature envelope
 func (s SignatureEnvelope) GetSignerInfo() (SignerInfo, error) {
 	return s.internalEnvelope.getSignerInfo()
 }
@@ -140,7 +139,7 @@ func validate(info SignerInfo) error {
 	expTime := info.SignedAttributes.Expiry
 	if !expTime.IsZero() {
 		if expTime.Before(signTime) || expTime.Equal(signTime) {
-			return &MalformedSignatureError{msg: "Expity time cannot be equal or before the signing time"}
+			return &MalformedSignatureError{msg: "Expiry time cannot be equal or before the signing time"}
 		}
 	}
 
@@ -151,7 +150,7 @@ func validate(info SignerInfo) error {
 	return nil
 }
 
-// For verify flow
+// NewSignatureEnvelopeFromBytes For verify flow
 func NewSignatureEnvelopeFromBytes(envelopeBytes []byte, envelopeMediaType SignatureMediaType) (SignatureEnvelope, error) {
 	switch envelopeMediaType {
 	case JWS_JSON_MEDIA_TYPE:
@@ -168,7 +167,7 @@ func NewSignatureEnvelopeFromBytes(envelopeBytes []byte, envelopeMediaType Signa
 	}
 }
 
-// For signing Flow
+// NewSignatureEnvelope For signing Flow
 func NewSignatureEnvelope(envelopeMediaType SignatureMediaType) (SignatureEnvelope, error) {
 	switch envelopeMediaType {
 	case JWS_JSON_MEDIA_TYPE:

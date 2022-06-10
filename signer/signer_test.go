@@ -8,7 +8,7 @@ import (
 )
 
 func TestSignWorkflow(t *testing.T) {
-	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), JWS_JSON_MEDIA_TYPE)
+	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), internal.JWS_JSON_MEDIA_TYPE)
 	err := signatureEnvelope.Verify(x509.CertPool{})
 	if err != nil {
 		t.Error("Signature Verification Failed.")
@@ -20,7 +20,7 @@ func TestVerifyWorkflow(t *testing.T) {
 }
 
 func TestGetSignInfoWithVerifyWorkflow(t *testing.T) {
-	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), JWS_JSON_MEDIA_TYPE)
+	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), internal.JWS_JSON_MEDIA_TYPE)
 	err := signatureEnvelope.Verify(x509.CertPool{})
 	if err != nil {
 		t.Error("Signature Verification Failed.")
@@ -35,7 +35,7 @@ func TestGetSignInfoWithVerifyWorkflow(t *testing.T) {
 }
 
 func TestGetSignInfoWithoutVerifyWorkflow(t *testing.T) {
-	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), JWS_JSON_MEDIA_TYPE)
+	signatureEnvelope, _ := NewSignatureEnvelopeFromBytes([]byte("VerifyMe!"), internal.JWS_JSON_MEDIA_TYPE)
 	signerInfo, signerInfoErr := signatureEnvelope.GetSignerInfo()
 	if signerInfoErr != nil {
 		t.Error("Failed to get SignerInfo.")
