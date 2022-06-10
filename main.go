@@ -6,6 +6,8 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"github.com/notaryproject/notation-core-go/signer"
 	"math/big"
@@ -18,6 +20,10 @@ func main() {
 
 func verify() {
 
+	if _, err := base64.RawURLEncoding.DecodeString(""); err != nil {
+		fmt.Println(err)
+	}
+
 	//sig := "{\r\n  \"payload\": \"eyJpc3MiOiJqb2UiLA0KICJleHAiOjEzMDA4MTkzODAsDQogImh0dHA6Ly9leGFtcGxlLmNvbS9pc19yb290Ijp0cnVlfQ\",\r\n  \"protected\":\"eyJhbGciOiJQUzI1NiIsInR5cCI6IkpXVCIsImNyaXQiOlsidHlwIiwiaW8uY25jZi5ub3Rhcnkuc2lnbmluZ1RpbWUiLCJtYXJrZWRDcml0Il0sImlvLmNuY2Yubm90YXJ5LnNpZ25pbmdUaW1lIjoiMjAwNi0wMS0wMlQxNTowNDowNVoiLCJpby5jbmNmLm5vdGFyeS5leHBpcnkiOiIyMDA2LTAxLTAyVDE1OjA0OjA1WiIsIm1hcmtlZENyaXQiOiJIb2xhIiwibm90TWFya2VkQ3JpdCI6IkhvbGEiLCJudW0iOjEyM30\",\r\n  \"header\": {\"kid\":\"e9bc097a-ce51-4036-9562-d2ade882db0d\"},\r\n  \"signature\":\"DtEhU3ljbEg8L38VWAfUAqOyKAM6-Xx-F4GawxaepmXFCgfTjDxw5djxLa8ISlSApmWQxfKTUJqPP3-Kg6NU1Q\"\r\n}"
 	sig, cert:=sign()
 	fmt.Println(string(sig))
@@ -27,7 +33,8 @@ func verify() {
 	fmt.Println(err)
 	fmt.Println("============================================================")
 	info,_ := sigEnv.GetSignerInfo()
-	fmt.Println(info)
+	fmt.Println(info.SignedAttributes)
+
 	fmt.Println("============================================================")
 	//fmt.Println(sigEnv.GetSignerInfo())
 	// sigInfo, err := sigEnv.GetSignerInfo()
@@ -64,7 +71,13 @@ func sign() ([]byte, x509.Certificate) {
 	}
 
 	publickey := &privatekey.PublicKey
+	pubASN1,_:= x509.MarshalPKIXPublicKey(publickey)
+	pubBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: pubASN1,
+	})
 
+	fmt.Println(string(pubBytes))
 	// create a self-signed certificate. template = parent
 	var parent = template
 	cert, _ := x509.CreateCertificate(rand.Reader, template, parent, publickey,privatekey)

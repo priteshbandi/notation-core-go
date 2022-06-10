@@ -42,7 +42,6 @@ func TestGetSignInfoWithoutVerifyWorkflow(t *testing.T) {
 	}
 
 	// TODO Add validation on values of signerInfo
-	fmt.Print("Use signer info", signerInfo)
 }
 
 func TestSignAndVerifyWorkflow(t *testing.T) {
@@ -50,7 +49,6 @@ func TestSignAndVerifyWorkflow(t *testing.T) {
 		Payload:            []byte{},
 		PayloadContentType: "",
 		CertificateChain:   *x509.NewCertPool(),
-		SignatureAlgorithm: RSASSA_PSS_SHA_384,
 		SigningTime:        time.Now(),
 		Expiry:             time.Now().Add(time.Hour),
 		SigningAgent:       "dummyAgent/1.0.0",

@@ -53,3 +53,38 @@ type UnsupportedOperationError struct{
 func (e *UnsupportedOperationError) Error() string {
 	return fmt.Sprintf("%s operation is not supported", e.operation)
 }
+
+// UnSupportedSigningKeyError is used when a signing key is not supported
+type UnSupportedSigningKeyError struct{
+	keyType string
+}
+
+func (e *UnSupportedSigningKeyError) Error() string {
+	if len(e.keyType) != 0 {
+		return fmt.Sprintf("%s signing key is not supported", e.keyType)
+	} else {
+		return "The signing key is not supported"
+	}
+}
+
+// MalformedSignRequestError is used when SignRequest is malformed.
+type MalformedSignRequestError struct {
+	msg string
+}
+
+func (e *MalformedSignRequestError) Error() string {
+	if len(e.msg) != 0 {
+		return e.msg
+	} else {
+		return "The SignRequest is malformed"
+	}
+}
+
+// SignatureAlgoNotSupportedError is used when signing algo is not supported.
+type SignatureAlgoNotSupportedError struct{
+	alg string
+}
+
+func (e *SignatureAlgoNotSupportedError) Error() string {
+	return fmt.Sprintf("%s algorithm is not supported", e.alg)
+}
