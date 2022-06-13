@@ -2,23 +2,22 @@ package signer
 
 import (
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"time"
 )
 
-type SignatureMediaType string
+type signatureMediaType string
 
-// SignatureAlgorithm lists supported Signature algorithms.
-type SignatureAlgorithm string
+// signatureAlgorithm lists supported Signature algorithms.
+type signatureAlgorithm string
 
 const (
-	RSASSA_PSS_SHA_256 SignatureAlgorithm = "RSASSA_PSS_SHA_256"
-	RSASSA_PSS_SHA_384 SignatureAlgorithm = "RSASSA_PSS_SHA_384"
-	RSASSA_PSS_SHA_512 SignatureAlgorithm = "RSASSA_PSS_SHA_512"
-	ECDSA_SHA_256      SignatureAlgorithm = "ECDSA_SHA_256"
-	ECDSA_SHA_384      SignatureAlgorithm = "ECDSA_SHA_384"
-	ECDSA_SHA_512      SignatureAlgorithm = "ECDSA_SHA_512"
+	RSASSA_PSS_SHA_256 signatureAlgorithm = "RSASSA_PSS_SHA_256"
+	RSASSA_PSS_SHA_384 signatureAlgorithm = "RSASSA_PSS_SHA_384"
+	RSASSA_PSS_SHA_512 signatureAlgorithm = "RSASSA_PSS_SHA_512"
+	ECDSA_SHA_256      signatureAlgorithm = "ECDSA_SHA_256"
+	ECDSA_SHA_384      signatureAlgorithm = "ECDSA_SHA_384"
+	ECDSA_SHA_512      signatureAlgorithm = "ECDSA_SHA_512"
 )
 
 // SignerInfo represents a parsed Signature envelope and agnostic to Signature envelope format.
@@ -27,7 +26,7 @@ type SignerInfo struct {
 	PayloadContentType string
 	SignedAttributes   SignedAttributes
 	UnsignedAttributes UnsignedAttributes
-	SignatureAlgorithm SignatureAlgorithm
+	SignatureAlgorithm signatureAlgorithm
 	CertificateChain   []x509.Certificate
 	Signature          []byte
 	TimestampSignature []byte
@@ -84,14 +83,18 @@ type internalSignatureEnvelope interface {
 }
 
 // Verify performs integrity validation and validates that cert-chain stored in Signature leads to given set of trusted root.
-func (s SignatureEnvelope) Verify(certs []x509.Certificate) (x509.Certificate, error) {
+func (s *SignatureEnvelope) Verify(trustedCerts []x509.Certificate) (x509.Certificate, error) {
 	if len(s.rawSignatureEnvelope) == 0 {
-		return x509.Certificate{}, &SignatureNotFoundError{}
+		return x509.Certificate{}, SignatureNotFoundError{}
+	}
+
+	if len(trustedCerts) == 0 {
+		return x509.Certificate{}, MalformedArgumentError{param: "trustedCerts"}
 	}
 
 	integrityError := s.internalEnvelope.validateIntegrity()
 	if integrityError != nil {
-		return x509.Certificate{}, integrityError
+		return x509.Certificate{}, InvalidSignatureError{err: integrityError}
 	}
 
 	singerInfo, singerInfoErr := s.internalEnvelope.getSignerInfo()
@@ -101,24 +104,30 @@ func (s SignatureEnvelope) Verify(certs []x509.Certificate) (x509.Certificate, e
 
 	certChain := singerInfo.CertificateChain
 	//TODO Implement validation on cert chain
-	fmt.Println("Yet to implement cert-chain validation for", certChain)
+	fmt.Println("Yet to implement cert-chain validation")
 
-	//TODO Implement truststore validation
-	fmt.Println("Yet to implement truststore validation")
-	return verifySigner(certChain, certs)
+	return verifySigner(certChain, trustedCerts)
 }
 
 // Sign generates Signature using given SignRequest.
-func (s SignatureEnvelope) Sign(req SignRequest) ([]byte, error) {
+func (s *SignatureEnvelope) Sign(req SignRequest) ([]byte, error) {
 	if err := validateSignRequest(req); err != nil {
 		return []byte{}, err
 	}
 
-	return s.internalEnvelope.signPayload(req)
+	sig, err := s.internalEnvelope.signPayload(req)
+	if sig != nil {
+		s.rawSignatureEnvelope = sig
+	}
+	return sig, err
 }
 
 // GetSignerInfo returns information about the Signature envelope
 func (s SignatureEnvelope) GetSignerInfo() (SignerInfo, error) {
+	if len(s.rawSignatureEnvelope) == 0 {
+		return SignerInfo{}, SignatureNotFoundError{}
+	}
+
 	signInfo, err := s.internalEnvelope.getSignerInfo()
 	if err != nil {
 		return signInfo, err
@@ -132,32 +141,32 @@ func (s SignatureEnvelope) GetSignerInfo() (SignerInfo, error) {
 // validateSignerInfo performs basic set of validations on SignerInfo struct.
 func validateSignerInfo(info SignerInfo) error {
 	if len(info.Payload) == 0 {
-		return &MalformedSignatureError{msg: "Payload not present"}
+		return MalformedSignatureError{msg: "Payload not present"}
 	}
 
 	// TODO: perform PayloadContentType value validations
 	if len(info.PayloadContentType) == 0 {
-		return &MalformedSignatureError{msg: "Signature content type not present or is empty"}
+		return MalformedSignatureError{msg: "Signature content type not present or is empty"}
 	}
 
 	signTime := info.SignedAttributes.SigningTime
 	if signTime.IsZero() {
-		return &MalformedSignatureError{msg: "Singing time not present"}
+		return MalformedSignatureError{msg: "Singing time not present"}
 	}
 
 	expTime := info.SignedAttributes.Expiry
 	if !expTime.IsZero() {
 		if expTime.Before(signTime) || expTime.Equal(signTime) {
-			return &MalformedSignatureError{msg: "Expiry time cannot be equal or before the signing time"}
+			return MalformedSignatureError{msg: "Expiry time cannot be equal or before the signing time"}
 		}
 	}
 
 	if len(info.CertificateChain) == 0 {
-		return &MalformedSignatureError{msg: "Certificate chain not present or is empty"}
+		return MalformedSignatureError{msg: "Certificate chain not present or is empty"}
 	}
 
 	if len(info.Signature) == 0 {
-		return &MalformedSignatureError{msg: "Signature not present or is empty"}
+		return MalformedSignatureError{msg: "Signature not present or is empty"}
 	}
 
 	return nil
@@ -166,60 +175,58 @@ func validateSignerInfo(info SignerInfo) error {
 // validateSignRequest performs basic set of validations on SignRequest struct.
 func validateSignRequest(req SignRequest) error {
 	if len(req.Payload) == 0 {
-		return &MalformedSignRequestError{msg: "Payload not present"}
+		return MalformedSignRequestError{msg: "Payload not present"}
 	}
 
 	// TODO: perform PayloadContentType value validations
 	if len(req.PayloadContentType) == 0 {
-		return &MalformedSignatureError{msg: "Signature content type not present or is empty"}
+		return MalformedSignRequestError{msg: "Signature content type not present or is empty"}
 	}
 
 	if len(req.CertificateChain) == 0 {
-		return &MalformedSignRequestError{msg: "Certificate chain not present or is empty"}
+		return MalformedSignRequestError{msg: "Certificate chain not present or is empty"}
 	}
 
 	signTime := req.SigningTime
 	if signTime.IsZero() {
-		return &MalformedSignRequestError{msg: "Singing time not present"}
+		return MalformedSignRequestError{msg: "Singing time not present"}
 	}
 
 	expTime := req.Expiry
 	if !expTime.IsZero() {
 		if expTime.Before(signTime) || expTime.Equal(signTime) {
-			return &MalformedSignRequestError{msg: "Expiry time cannot be equal or before the signing time"}
+			return MalformedSignRequestError{msg: "Expiry time cannot be equal or before the signing time"}
 		}
 	}
 
 	if req.SignatureProvider == nil {
-		return &MalformedSignatureError{msg: "SignatureProvider is nil"}
+		return MalformedSignRequestError{msg: "SignatureProvider is nil"}
 	}
 	return nil
 }
 
 // NewSignatureEnvelopeFromBytes is used for signature verification workflow
-func NewSignatureEnvelopeFromBytes(envelopeBytes []byte, envelopeMediaType SignatureMediaType) (SignatureEnvelope, error) {
+func NewSignatureEnvelopeFromBytes(envelopeBytes []byte, envelopeMediaType signatureMediaType) (SignatureEnvelope, error) {
 	switch envelopeMediaType {
 	case JWS_JSON_MEDIA_TYPE:
 		internal, err := newJWSEnvelopeFromBytes(envelopeBytes)
 		if err != nil {
-			return SignatureEnvelope{}, nil
+			return SignatureEnvelope{}, MalformedArgumentError{"envelopeBytes", err}
 		}
-		return SignatureEnvelope{
-			rawSignatureEnvelope: envelopeBytes,
-			internalEnvelope:     internal,
-		}, nil
+		return SignatureEnvelope{envelopeBytes, &internal}, nil
 	default:
-		return SignatureEnvelope{}, &UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
+		return SignatureEnvelope{}, UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
 	}
 }
 
 // NewSignatureEnvelope is used for signature generation workflow
-func NewSignatureEnvelope(envelopeMediaType SignatureMediaType) (SignatureEnvelope, error) {
+func NewSignatureEnvelope(envelopeMediaType signatureMediaType) (SignatureEnvelope, error) {
 	switch envelopeMediaType {
 	case JWS_JSON_MEDIA_TYPE:
-		return SignatureEnvelope{internalEnvelope: newJWSEnvelope()}, nil
+		internal := newJWSEnvelope()
+		return SignatureEnvelope{internalEnvelope: &internal}, nil
 	default:
-		return SignatureEnvelope{}, &UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
+		return SignatureEnvelope{}, UnsupportedSignatureFormatError{mediaType: string(envelopeMediaType)}
 	}
 }
 
@@ -232,5 +239,5 @@ func verifySigner(sigCerts []x509.Certificate, trustedCerts []x509.Certificate) 
 			}
 		}
 	}
-	return x509.Certificate{}, errors.New("hoka")
+	return x509.Certificate{}, UntrustedSignatureError{}
 }

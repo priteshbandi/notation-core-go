@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	JWS_JSON_MEDIA_TYPE SignatureMediaType = "application/jose+json"
+	JWS_JSON_MEDIA_TYPE signatureMediaType = "application/jose+json"
 )
 
 const(
@@ -47,7 +47,7 @@ func newJWSEnvelope() JWS {
 	return JWS{internalEnv: newJwsInternalEnvelope()}
 }
 
-func (jws JWS) validateIntegrity() error {
+func (jws *JWS) validateIntegrity() error {
 	sigInfo, err := jws.getSignerInfo()
 	if err != nil {
 		return err
@@ -62,9 +62,31 @@ func (jws JWS) validateIntegrity() error {
 	return verifyJWT(compact, sigInfo.CertificateChain[0].PublicKey)
 }
 
-func (jws JWS) getSignerInfo() (SignerInfo, error) {
-	signInfo := SignerInfo{}
+func (jws *JWS) signPayload(req SignRequest) ([]byte, error) {
+	leafPublicKey := req.CertificateChain[0].PublicKey
+	m := make(map[string]interface{})
+	if err := json.Unmarshal(req.Payload, &m); err != nil {
+		return []byte{}, err
+	}
+	signingMethod, _ := getSigningMethod(leafPublicKey)
+	signedAttrs := getSignedAttrs(req, signingMethod)
+	compact, _ := signJWT(m, signedAttrs, signingMethod, req.SignatureProvider)
 
+	j, err := generateJws(compact, req)
+	if err != nil {
+		return nil, err
+	}
+
+	b, err := json.Marshal(j)
+	if err != nil {
+		return nil, err
+	}
+	jws.internalEnv = j
+	return b, nil
+}
+
+func (jws *JWS) getSignerInfo() (SignerInfo, error) {
+	signInfo := SignerInfo{}
 	// parse payload
 	if payload, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.Payload); err != nil {
 		return signInfo, err
@@ -108,7 +130,6 @@ func (jws JWS) getSignerInfo() (SignerInfo, error) {
 	return signInfo, nil
 }
 
-
 func populateProtectedHeaders(pHeaders map[string]interface{}, signInfo *SignerInfo) error {
 	crit, err := getAndValidateCriticalHeaders(pHeaders)
 	if err != nil {
@@ -126,7 +147,10 @@ func populateProtectedHeaders(pHeaders map[string]interface{}, signInfo *SignerI
 	}
 
 	// This should be last entry and populates crit and other protected headers
-	populateExtendedAttributes(pHeaders, crit, &signInfo.SignedAttributes.ExtendedAttributes)
+	if err := populateExtendedAttributes(pHeaders, crit, &signInfo.SignedAttributes.ExtendedAttributes); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -137,7 +161,7 @@ func populateString(data map[string]interface{}, s string, holder *string) {
 	}
 }
 
-func populateAlg(data map[string]interface{}, holder *SignatureAlgorithm) error {
+func populateAlg(data map[string]interface{}, holder *signatureAlgorithm) error {
 	if val, ok := data["alg"]; ok {
 		if sigAlgo , err := getAlgo(val.(string)); err != nil {
 			return err
@@ -152,7 +176,7 @@ func populateAlg(data map[string]interface{}, holder *SignatureAlgorithm) error 
 func populateTime(data map[string]interface{}, s string, holder *time.Time) error {
 	if val, ok := data[s]; ok {
 		if value, err := time.Parse(time.RFC3339, val.(string)); err != nil {
-			return &MalformedSignatureError{msg: fmt.Sprintf("Failed to parse time for %s attribute, it's not in RFC3339 format", s)}
+			return MalformedSignatureError{msg: fmt.Sprintf("Failed to parse time for %s attribute, it's not in RFC3339 format", s)}
 		} else {
 			*holder = value
 			delete(data, s)
@@ -161,7 +185,6 @@ func populateTime(data map[string]interface{}, s string, holder *time.Time) erro
 	return nil
 }
 
-// TODO: verify crit values to add signing time etc
 func populateExtendedAttributes(data map[string]interface{}, critical []string, holder *[]Attributes) error {
 	extendedAttr := make([]Attributes, 0)
 	for _, val := range critical {
@@ -207,12 +230,12 @@ func getAndValidateCriticalHeaders(pHeaders map[string]interface{}) ([]string, e
 
 		if len(headersMarkedCrit) !=0 {
 			// This is not taken care by VerifySignerInfo method
-			return crit, &MalformedSignatureError{"Required headers not marked critical" }
+			return crit, MalformedSignatureError{"Required headers not marked critical" }
 		}
 		return crit, nil
 	} else {
 		// This is not taken care by VerifySignerInfo method
-		return crit, &MalformedSignatureError{"Missing `crit` header."}
+		return crit, MalformedSignatureError{"Missing `crit` header."}
 	}
 }
 
@@ -236,19 +259,6 @@ func getSignedAttrs(req SignRequest, method jwt.SigningMethod) map[string]interf
 
 	attrs[critHeaderKey] = crit
 	return attrs
-}
-
-func (jws JWS) signPayload(req SignRequest) ([]byte, error) {
-	leafPublicKey := req.CertificateChain[0].PublicKey
-	m := make(map[string]interface{})
-	if err := json.Unmarshal(req.Payload, &m); err != nil {
-		return []byte{}, err
-	}
-	signingMethod, _ := getSigningMethod(leafPublicKey)
-	signedAttrs := getSignedAttrs(req, signingMethod)
-	compact, _ := signJWT(m, signedAttrs, signingMethod, req.SignatureProvider)
-
-	return generateJws(compact, req)
 }
 
 // ***********************************************************************
@@ -298,10 +308,10 @@ func newJwsInternalEnvelope() jwsInternalEnvelope {
 	return jwsInternalEnvelope{}
 }
 
-func generateJws(compact string, req SignRequest) ([]byte, error) {
+func generateJws(compact string, req SignRequest) (jwsInternalEnvelope, error) {
 	parts := strings.Split(compact, ".")
 	if len(parts) != 3 {
-		return nil, errors.New("invalid compact serialization")
+		return jwsInternalEnvelope{}, errors.New("invalid compact serialization")
 	}
 
 	rawCerts := make([][]byte, len(req.CertificateChain))
@@ -309,7 +319,7 @@ func generateJws(compact string, req SignRequest) ([]byte, error) {
 		rawCerts[i] = cert.Raw
 	}
 
-	j := jwsInternalEnvelope{
+	return jwsInternalEnvelope{
 		Protected: parts[0],
 		Payload:   parts[1],
 		Signature: parts[2],
@@ -317,12 +327,10 @@ func generateJws(compact string, req SignRequest) ([]byte, error) {
 			CertChain:    rawCerts,
 			SigningAgent: req.SigningAgent,
 		},
-	}
-
-	return json.Marshal(j)
+	}, nil
 }
 
-func getAlgo(alg string) (SignatureAlgorithm, error) {
+func getAlgo(alg string) (signatureAlgorithm, error) {
 	switch alg {
 	case "PS256":
 		return RSASSA_PSS_SHA_256, nil
@@ -338,7 +346,7 @@ func getAlgo(alg string) (SignatureAlgorithm, error) {
 		return ECDSA_SHA_512, nil
 	}
 
-	return RSASSA_PSS_SHA_512, &SignatureAlgoNotSupportedError{alg: alg}
+	return RSASSA_PSS_SHA_512, SignatureAlgoNotSupportedError{alg: alg}
 }
 
 // ***********************************************************************
@@ -393,7 +401,7 @@ type SigningMethodForSign struct {
 }
 
 func (s SigningMethodForSign) Verify(_, _ string, _ interface{}) error {
-	return &UnsupportedOperationError{}
+	return UnsupportedOperationError{}
 }
 
 func (s SigningMethodForSign) Sign(signingString string, _ interface{}) (string, error) {

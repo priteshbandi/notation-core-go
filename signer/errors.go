@@ -3,10 +3,12 @@ package signer
 import "fmt"
 
 // InvalidSignatureError is used when the Signature associated is no longer valid.
-type InvalidSignatureError struct{}
+type InvalidSignatureError struct{
+	err error
+}
 
-func (e *InvalidSignatureError) Error() string {
-	return "The Signature is invalid"
+func (e InvalidSignatureError) Error() string {
+	return fmt.Sprintf("The Signature is invalid. Error: %s", e.err.Error())
 }
 
 // MalformedSignatureError is used when Signature envelope is malformed.
@@ -14,7 +16,7 @@ type MalformedSignatureError struct {
 	msg string
 }
 
-func (e *MalformedSignatureError) Error() string {
+func (e MalformedSignatureError) Error() string {
 	if len(e.msg) != 0 {
 		return e.msg
 	} else {
@@ -27,21 +29,21 @@ type UnsupportedSignatureFormatError struct {
 	mediaType string
 }
 
-func (e *UnsupportedSignatureFormatError) Error() string {
+func (e UnsupportedSignatureFormatError) Error() string {
 	return fmt.Sprintf("The Signature envelope format with media type '%s' is not supported", e.mediaType)
 }
 
 // SignatureNotFoundError is used when signature envelope is not signed.
 type SignatureNotFoundError struct{}
 
-func (e *SignatureNotFoundError) Error() string {
-	return "Signature not present. Please sign before verify"
+func (e SignatureNotFoundError) Error() string {
+	return "Signature envelope not present."
 }
 
 // UntrustedSignatureError is used when signature is not generated using trusted certificates.
 type UntrustedSignatureError struct{}
 
-func (e *UntrustedSignatureError) Error() string {
+func (e UntrustedSignatureError) Error() string {
 	return "Signature not generated using specified trusted certificates"
 }
 
@@ -50,7 +52,7 @@ type UnsupportedOperationError struct{
 	operation string
 }
 
-func (e *UnsupportedOperationError) Error() string {
+func (e UnsupportedOperationError) Error() string {
 	return fmt.Sprintf("%s operation is not supported", e.operation)
 }
 
@@ -59,11 +61,25 @@ type UnSupportedSigningKeyError struct{
 	keyType string
 }
 
-func (e *UnSupportedSigningKeyError) Error() string {
+func (e UnSupportedSigningKeyError) Error() string {
 	if len(e.keyType) != 0 {
 		return fmt.Sprintf("%s signing key is not supported", e.keyType)
 	} else {
 		return "The signing key is not supported"
+	}
+}
+
+// MalformedArgumentError is used when an argument to a function is malformed.
+type MalformedArgumentError struct{
+	param string
+	err error
+}
+
+func (e MalformedArgumentError) Error() string {
+	if e.err != nil {
+		return fmt.Sprintf("%q param is malformed. Error: %s", e.param, e.err.Error())
+	} else {
+		return fmt.Sprintf("%q param is malformed", e.param)
 	}
 }
 
@@ -72,7 +88,7 @@ type MalformedSignRequestError struct {
 	msg string
 }
 
-func (e *MalformedSignRequestError) Error() string {
+func (e MalformedSignRequestError) Error() string {
 	if len(e.msg) != 0 {
 		return e.msg
 	} else {
@@ -85,6 +101,6 @@ type SignatureAlgoNotSupportedError struct{
 	alg string
 }
 
-func (e *SignatureAlgoNotSupportedError) Error() string {
+func (e SignatureAlgoNotSupportedError) Error() string {
 	return fmt.Sprintf("%s algorithm is not supported", e.alg)
 }

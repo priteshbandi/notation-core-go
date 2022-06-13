@@ -112,10 +112,8 @@ type MySigner struct {
 }
 
 func (m MySigner) Sign(bytes []byte) ([]byte, error) {
-
 	hasher := crypto.SHA384.New()
 	hasher.Write(bytes)
-
 	// Sign the string and return the encoded bytes
 	return rsa.SignPSS(rand.Reader, &m.rsaKey,  crypto.SHA384, hasher.Sum(nil),  &rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash})
 }
