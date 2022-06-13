@@ -36,11 +36,8 @@ const (
 )
 
 func TestNewSignatureEnvelopeFromBytesError(t *testing.T) {
-	if _, err := NewSignatureEnvelopeFromBytes([]byte("Malformed"), JWS_JSON_MEDIA_TYPE); err != nil {
-		if !errors.As(err, new(MalformedArgumentError)) {
-			t.Errorf("Expected %T but not found %T", MalformedArgumentError{}, err)
-		}
-	} else {
+	_, err := NewSignatureEnvelopeFromBytes([]byte("Malformed"), JWS_JSON_MEDIA_TYPE)
+	if !(err != nil && errors.As(err, new(MalformedArgumentError))) {
 		t.Errorf("Expected MalformedArgumentError but not found")
 	}
 }
@@ -142,12 +139,8 @@ func TestVerify(t *testing.T) {
 func TestVerifyErrors(t *testing.T) {
 	t.Run("when trustedCerts is absent", func(t *testing.T) {
 		env, _ := NewSignatureEnvelopeFromBytes([]byte("{}"), JWS_JSON_MEDIA_TYPE)
-		if _, err := env.Verify([]x509.Certificate{}); err != nil {
-			t.Log(err)
-			if !errors.As(err, &MalformedArgumentError{}) {
-				t.Errorf("Expected %T but found %T", MalformedArgumentError{}, err)
-			}
-		} else {
+		_, err := env.Verify([]x509.Certificate{})
+		if !(err != nil && errors.As(err, new(MalformedArgumentError))) {
 			t.Errorf("Expected MalformedArgumentError but not found")
 		}
 	})
@@ -209,11 +202,8 @@ func TestSignAndVerify(t *testing.T) {
 func TestGetSignerInfoErrors(t *testing.T) {
 	env, _ := NewSignatureEnvelope(JWS_JSON_MEDIA_TYPE)
 	t.Run("when called GetSignerInfo before sign or verify.", func(t *testing.T) {
-		if _, err := env.GetSignerInfo(); err != nil {
-			if !errors.As(err, new(SignatureNotFoundError)) {
-				t.Errorf("Expected %T but not found %T", SignatureNotFoundError{}, err)
-			}
-		} else {
+		_, err := env.GetSignerInfo()
+		if !(err != nil && errors.As(err, new(SignatureNotFoundError))) {
 			t.Errorf("Expected SignatureNotFoundError but not found")
 		}
 	})
@@ -223,11 +213,8 @@ func TestGetSignerInfoErrors(t *testing.T) {
 		req.Payload = []byte("Sad")
 		env.Sign(req)
 		env.Verify([]x509.Certificate{*testhelper.GetRoot2Certificate().Cert})
-		if _, err := env.GetSignerInfo(); err != nil {
-			if !errors.As(err, new(SignatureNotFoundError)) {
-				t.Errorf("Expected %T but not found %T", SignatureNotFoundError{}, err)
-			}
-		} else {
+		_, err := env.GetSignerInfo()
+		if !(err != nil && errors.As(err, new(SignatureNotFoundError))) {
 			t.Errorf("Expected SignatureNotFoundError but not found")
 		}
 	})
@@ -319,11 +306,8 @@ func verifySignWithRequest(env SignatureEnvelope, req SignRequest, t *testing.T)
 
 
 func verifySignErrorWithRequest(env SignatureEnvelope, req SignRequest, t *testing.T) {
-	if _, err := env.Sign(req); err != nil {
-		if !errors.As(err, new(MalformedSignRequestError)) {
-			t.Errorf("Expected %T but not found %T", MalformedSignRequestError{}, err)
-		}
-	} else {
+	_, err := env.Sign(req);
+	if !(err != nil && errors.As(err, new(MalformedSignRequestError))) {
 		t.Errorf("Expected MalformedArgumentError but not found")
 	}
 }

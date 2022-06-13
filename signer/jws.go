@@ -48,6 +48,10 @@ func newJWSEnvelope() JWS {
 }
 
 func (jws *JWS) validateIntegrity() error {
+	if len(strings.TrimSpace(jws.internalEnv.Payload)) == 0 {
+		return SignatureNotFoundError{}
+	}
+
 	sigInfo, err := jws.getSignerInfo()
 	if err != nil {
 		return err
