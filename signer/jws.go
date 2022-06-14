@@ -48,7 +48,7 @@ func newJWSEnvelope() JWS {
 }
 
 func (jws *JWS) validateIntegrity() error {
-	if len(strings.TrimSpace(jws.internalEnv.Payload)) == 0 {
+	if reflect.DeepEqual(jws.internalEnv, newJwsInternalEnvelope()) {
 		return SignatureNotFoundError{}
 	}
 
@@ -72,7 +72,12 @@ func (jws *JWS) signPayload(req SignRequest) ([]byte, error) {
 	if err := json.Unmarshal(req.Payload, &m); err != nil {
 		return []byte{}, err
 	}
-	signingMethod, _ := getSigningMethod(leafPublicKey)
+	signingMethod, err := getSigningMethod(leafPublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+
 	signedAttrs := getSignedAttrs(req, signingMethod)
 	compact, _ := signJWT(m, signedAttrs, signingMethod, req.SignatureProvider)
 
@@ -91,6 +96,10 @@ func (jws *JWS) signPayload(req SignRequest) ([]byte, error) {
 
 func (jws *JWS) getSignerInfo() (SignerInfo, error) {
 	signInfo := SignerInfo{}
+	if reflect.DeepEqual(jws.internalEnv, newJwsInternalEnvelope()) {
+		return signInfo, SignatureNotFoundError{}
+	}
+
 	// parse payload
 	if payload, err := base64.RawURLEncoding.DecodeString(jws.internalEnv.Payload); err != nil {
 		return signInfo, err
@@ -167,7 +176,11 @@ func populateString(data map[string]interface{}, s string, holder *string) {
 
 func populateAlg(data map[string]interface{}, holder *signatureAlgorithm) error {
 	if val, ok := data["alg"]; ok {
-		if sigAlgo , err := getAlgo(val.(string)); err != nil {
+		algString, ok := val.(string)
+		if !ok {
+			return MalformedSignatureError{msg: fmt.Sprintf("Failed to parse alg header.")}
+		}
+		if sigAlgo , err := getAlgo(algString); err != nil {
 			return err
 		} else {
 			*holder = sigAlgo
@@ -178,7 +191,9 @@ func populateAlg(data map[string]interface{}, holder *signatureAlgorithm) error 
 }
 
 func populateTime(data map[string]interface{}, s string, holder *time.Time) error {
+	fmt.Println(data[s])
 	if val, ok := data[s]; ok {
+
 		if value, err := time.Parse(time.RFC3339, val.(string)); err != nil {
 			return MalformedSignatureError{msg: fmt.Sprintf("Failed to parse time for %s attribute, it's not in RFC3339 format", s)}
 		} else {
@@ -315,6 +330,7 @@ func newJwsInternalEnvelope() jwsInternalEnvelope {
 func generateJws(compact string, req SignRequest) (jwsInternalEnvelope, error) {
 	parts := strings.Split(compact, ".")
 	if len(parts) != 3 {
+		// this should never happen
 		return jwsInternalEnvelope{}, errors.New("invalid compact serialization")
 	}
 
@@ -386,7 +402,7 @@ func verifyJWT(tokenString string, key crypto.PublicKey) error {
 
 	if _, err := parser.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		if t.Method.Alg() != signingMethod.Alg() {
-			return nil, fmt.Errorf("unexpected signing method: %v: require %v", t.Method.Alg(), signingMethod.Alg())
+			return nil, MalformedSignatureError{msg: fmt.Sprintf("Unexpected signing method: %v: require %v", t.Method.Alg(), signingMethod.Alg())}
 		}
 
 		// override default signing method with key-specific method
@@ -440,7 +456,7 @@ func getSigningMethod(key interface{}) (jwt.SigningMethod, error) {
 		case 512:
 			return jwt.SigningMethodPS512, nil
 		default:
-			return nil, &UnSupportedSigningKeyError{keyType : "rsa"}
+			return nil, UnSupportedSigningKeyError{keyType : "rsa"}
 		}
 	case *ecdsa.PublicKey:
 		switch key.Curve.Params().BitSize {
@@ -451,8 +467,8 @@ func getSigningMethod(key interface{}) (jwt.SigningMethod, error) {
 		case jwt.SigningMethodES512.CurveBits:
 			return jwt.SigningMethodES512, nil
 		default:
-			return nil, &UnSupportedSigningKeyError{keyType : "ecdsa"}
+			return nil, UnSupportedSigningKeyError{keyType : "ecdsa"}
 		}
 	}
-	return nil, &UnSupportedSigningKeyError{}
+	return nil, UnSupportedSigningKeyError{}
 }

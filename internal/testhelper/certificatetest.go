@@ -1,6 +1,7 @@
 package testhelper
 
 import (
+	_ "crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -13,6 +14,7 @@ var (
 	root  CertTuple
 	leaf  CertTuple
 	root2 CertTuple
+	unsupported CertTuple
 )
 
 type CertTuple struct {
@@ -36,14 +38,22 @@ func GetRoot2Certificate() CertTuple {
 	return root2
 }
 
+func GetUnsupportedCertificate() CertTuple {
+	return unsupported
+}
+
 func setupCertificates() {
 	root = getCertTuple("Notation Test Root", nil)
 	leaf = getCertTuple("Notation Test Leaf Cert", &root)
 	root2 = getCertTuple("Notation Test Root2", nil)
+
+	k,_ := rsa.GenerateKey(rand.Reader, 1024)
+	unsupported = getCertTupleWithPK(k,"Notation Unsupported Root", nil)
 }
 
-func getCertTuple(cn string, issuer *CertTuple) CertTuple {
-	privKey, _ := rsa.GenerateKey(rand.Reader, 4096)
+
+
+func getCertTupleWithPK(privKey *rsa.PrivateKey, cn string, issuer *CertTuple) CertTuple {
 	var certBytes []byte
 	if issuer != nil {
 		template := &x509.Certificate{
@@ -86,4 +96,9 @@ func getCertTuple(cn string, issuer *CertTuple) CertTuple {
 		Cert:       cert,
 		PrivateKey: privKey,
 	}
+}
+
+func getCertTuple(cn string, issuer *CertTuple) CertTuple {
+	pk, _ := rsa.GenerateKey(rand.Reader, 4096)
+	return getCertTupleWithPK(pk, cn, issuer)
 }
