@@ -1,5 +1,5 @@
-github.com/fxamacker/cbor/v2 v2.6.0 h1:sU6J2usfADwWlYDAFhZBQ6TnLFBHxgesMrQfQgk1tWA=
-github.com/fxamacker/cbor/v2 v2.6.0/go.mod h1:pxXPTn3joSm21Gbwsv0w9OSA2y1HFR9qXEeXQVeNoDQ=
+github.com/fxamacker/cbor/v2 v2.9.6 h1:NHZPxuUjJXQjX9itA785y/5NKSlI4HQ+S7noZsmI7hs=
+github.com/fxamacker/cbor/v2 v2.9.6/go.mod h1:4EaZp6ClVunETjQ4GHmGNzysDK91Lr+r6Yz6tJqzVCw=
 github.com/golang-jwt/jwt/v4 v4.5.0 h1:7cYmW1XlMY7h7ii7UhUyChSgS5wUJEnm9uZVTGqOWzg=
 github.com/golang-jwt/jwt/v4 v4.5.0/go.mod h1:m21LjoU+eqJr34lmDMbreY2eSTRJ1cv77w39/MY0Ch0=
 github.com/veraison/go-cose v1.1.0 h1:AalPS4VGiKavpAzIlBjrn7bhqXiXi4jbMYY/2+UC+4o=
